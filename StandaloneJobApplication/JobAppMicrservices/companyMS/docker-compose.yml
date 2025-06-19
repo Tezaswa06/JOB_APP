@@ -1,0 +1,141 @@
+services:
+  postgres:
+    container_name: postgres_container
+    image: postgres
+    environment:
+      POSTGRES_USER: tezaswa06
+      POSTGRES_PASSWORD: Tezaswa@123
+      PGDATA: /data/postgres
+    volumes:
+      - postgres:/data/postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - postgres
+    restart: unless-stopped
+
+  zipkin:
+    image: openzipkin/zipkin
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    networks:
+      - postgres
+
+  rabbitmq:
+    image: rabbitmq:3.11-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - postgres
+
+  config-server:
+    image: tezaswa06/config-server:latest
+    container_name: config-server
+    ports:
+      - "8080:8080"
+    depends_on:
+      - service-reg
+    networks:
+      - microservice-network
+      - postgres
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+
+  service-reg:
+    image: tezaswa06/service-reg:latest
+    container_name: service-reg
+    ports:
+      - "8761:8761"
+    depends_on:
+      - rabbitmq
+      - zipkin
+      - postgres
+      - pgadmin
+    networks:
+      - microservice-network
+      - postgres
+
+  company-ms:
+    image: tezaswa06/company-ms:latest
+    container_name: company-ms
+    ports:
+      - "8081:8081"
+    depends_on:
+      - service-reg
+      - config-server
+    networks:
+      - microservice-network
+      - postgres
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/company-ms
+      - SPRING_DATASOURCE_USERNAME=tezaswa06
+      - SPRING_DATASOURCE_PASSWORD=Tezaswa@123
+
+  job-ms:
+    image: tezaswa06/job-ms:latest
+    container_name: job-ms
+    ports:
+      - "8082:8082"
+    depends_on:
+      - service-reg
+      - config-server
+    networks:
+      - microservice-network
+      - postgres
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://servicereg:8761/eureka
+
+  gateway-ms:
+    image: tezaswa06/gateway:latest
+    ports:
+      - "8084:8084"
+    depends_on:
+      - service-reg
+    networks:
+      - microservice-network
+      - postgres
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+
+  review-ms:
+    image: tezaswa06/review-ms:latest
+    container_name: review-ms
+    ports:
+      - "8083:8083"
+    depends_on:
+      - service-reg
+      - config-server
+    networks:
+      - microservice-network
+      - postgres
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+
+volumes:
+  postgres:
+  pgadmin:
+
+networks:
+  postgres:
+    driver: bridge
+  microservice-network:
